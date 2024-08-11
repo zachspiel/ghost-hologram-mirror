@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Ghost Hologram Mirror App</title>
+    <script type="text/javascript">
+        let conn;
+
+        window.onload = function () {
+            if (window["WebSocket"]) {
+                conn = new WebSocket("ws://" + document.location.host + "/ws");
+
+                conn.onclose = function (evt) {
+                    var item = document.createElement("div");
+                    item.className = "absolute right-4 bottom-4 bg-red-100 p-4 rounded-md"
+                    item.innerHTML = "<p class='text-red-600 font-bold'>Connection closed.</p>";
+                    document.getElementById("img-container").appendChild(item);
+                };
+                conn.onmessage = function (evt) {
+                    var messages = evt.data.split('\n');
+                    console.log(messages)
+                    for (var i = 0; i < messages.length; i++) {
+                        try{
+                            const data = JSON.parse(messages[i]);
+                            if(data.messageType === "setImage") {
+                                document.getElementById("img-container").style.backgroundImage = `url("images/${data.payload}")`
+                            }
+                            console.log(data)
+                        } catch (e) {
+                            console.log(e)
+                        }
+                    }
+                };
+            }
+        };
+    </script>
+
+</head>
+<body class="dark:bg-black">
+    <div id="img-container" class="h-screen w-screen bg-contain bg-center bg-no-repeat">
+    </div>
+</body>
+</html>

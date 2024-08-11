@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Ghost Hologram Mirror App</title>
+
+    <script type="text/javascript">
+        let conn;
+        let createdImageGallery = false;
+
+        window.onload = function () {
+            if (window["WebSocket"]) {
+                conn = new WebSocket("ws://" + document.location.host + "/ws");
+
+                conn.onopen = function () {
+                    document.getElementById("connected-message").classList.remove("hidden")
+                    document.getElementById("disconnected-message").classList.add("hidden")
+                }
+
+                conn.onclose = function (evt) {
+                    document.getElementById("connected-message").classList.add("hidden")
+                    document.getElementById("disconnected-message").classList.remove("hidden")
+                };
+
+                conn.onmessage = function (evt) {
+                    const messages = evt.data.split('\n');
+
+                    messages.forEach((message) => {
+                        try{
+                            const data = JSON.parse(message);
+                            if(data.messageType === "setAvailableImages" && !createdImageGallery) {
+                                const images = data.payload.split(",")
+
+                                images.forEach((image) => {
+                                    const newImg = document.createElement("img");
+                                    newImg.src = "images/" + image;
+                                    newImg.className = "hover:cursor w-28 h-28";
+                                    newImg.alt = image;
+                                    newImg.onclick = () => handleImageSelection(image);
+
+                                    document.getElementById("image-grid").appendChild(newImg);
+                                })
+
+                                createdImageGallery = true;
+                            } else if(data.messageType === "setImage") {
+                                document.getElementById("now-playing").src = "images/" + data.payload;
+                            }
+                        } catch (e) {
+                            console.log(e)
+                        }
+                    })
+                };
+            }
+        };
+
+        function handleImageSelection(image) {
+            conn.send(JSON.stringify({messageType: "setImage", payload: image}))
+        }
+    </script>
+
+</head>
+<body class="bg-white dark:bg-black dark:text-white">
+    <div class="grid">
+        <h1 class="text-3xl font-bold justify-self-center">👻 Ghost Mirror UI 👻</h1>
+        <span id="connected-message" class="text-md justify-self-end hidden">Connected to mirror <span class="h-2 w-2 mb-1 rounded-full bg-green-600 inline-block"></span></span>
+        <span id="disconnected-message" class="text-md justify-self-end hidden">Connection closed <span class="h-2 w-2 mb-1 rounded-full bg-red-600 inline-block"></span></span>
+    </div>
+
+    <h2 class="text-2xl font-bold">Now playing</h2>
+
+    <img src="images/ghost.gif" width="200px" height="200px" id="now-playing"/>
+
+    <div class="mx-2 mt-10">
+        <h3 class="text-xl">Click on image to display on mirror</h3>
+    </div>
+
+    <div class="mt-4 flex" id="image-grid"></div>
+</body>
+</html>
