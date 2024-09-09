@@ -1,81 +1,106 @@
 <!DOCTYPE html>
 <html lang="en" class="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script src="https://cdn.tailwindcss.com"></script>
     <title>Ghost Hologram Mirror App</title>
 
     <script type="text/javascript">
-        let conn;
-        let createdImageGallery = false;
+      let conn;
+      let createdImageGallery = false;
 
-        window.onload = function () {
-            if (window["WebSocket"]) {
-                conn = new WebSocket("ws://" + document.location.host + "/ws");
+      window.onload = function () {
+        const location = document.location;
+        const scheme = location.protocol === "https:" ? "wss" : "ws";
+        const serverUrl = `${scheme}://${location.hostname}:${location.port}/ws`;
+        conn = new WebSocket(serverUrl);
 
-                conn.onopen = function () {
-                    document.getElementById("connected-message").classList.remove("hidden")
-                    document.getElementById("disconnected-message").classList.add("hidden")
-                }
-
-                conn.onclose = function (evt) {
-                    document.getElementById("connected-message").classList.add("hidden")
-                    document.getElementById("disconnected-message").classList.remove("hidden")
-                };
-
-                conn.onmessage = function (evt) {
-                    const messages = evt.data.split('\n');
-
-                    messages.forEach((message) => {
-                        try{
-                            const data = JSON.parse(message);
-                            if(data.messageType === "setAvailableImages" && !createdImageGallery) {
-                                const images = data.payload.split(",")
-
-                                images.forEach((image) => {
-                                    const newImg = document.createElement("img");
-                                    newImg.src = "images/" + image;
-                                    newImg.className = "hover:cursor w-28 h-28";
-                                    newImg.alt = image;
-                                    newImg.onclick = () => handleImageSelection(image);
-
-                                    document.getElementById("image-grid").appendChild(newImg);
-                                })
-
-                                createdImageGallery = true;
-                            } else if(data.messageType === "setImage") {
-                                document.getElementById("now-playing").src = "images/" + data.payload;
-                            }
-                        } catch (e) {
-                            console.log(e)
-                        }
-                    })
-                };
-            }
+        conn.onopen = function () {
+          document
+            .getElementById("connected-message")
+            .classList.remove("hidden");
+          document
+            .getElementById("disconnected-message")
+            .classList.add("hidden");
         };
 
-        function handleImageSelection(image) {
-            conn.send(JSON.stringify({messageType: "setImage", payload: image}))
-        }
-    </script>
+        conn.onclose = function (evt) {
+          document.getElementById("connected-message").classList.add("hidden");
+          document
+            .getElementById("disconnected-message")
+            .classList.remove("hidden");
+        };
 
-</head>
-<body class="bg-white dark:bg-black dark:text-white">
+        conn.onmessage = function (evt) {
+          const messages = evt.data.split("\n");
+
+          messages.forEach((message) => {
+            try {
+              const data = JSON.parse(message);
+              if (
+                data.messageType === "setAvailableImages" &&
+                !createdImageGallery
+              ) {
+                const images = data.payload.split(",");
+
+                images.forEach((image) => {
+                  const newImg = document.createElement("img");
+                  newImg.src = image;
+                  newImg.className = "hover:cursor w-60 h-60";
+                  newImg.alt = image;
+                  newImg.onclick = () => handleImageSelection(image);
+
+                  document.getElementById("image-grid").appendChild(newImg);
+                });
+
+                createdImageGallery = true;
+              } else if (data.messageType === "setImage") {
+                document.getElementById("now-playing").src = data.payload;
+              }
+            } catch (e) {
+              console.log(e);
+            }
+          });
+        };
+      };
+
+      function handleImageSelection(image) {
+        conn.send(JSON.stringify({ messageType: "setImage", payload: image }));
+      }
+    </script>
+  </head>
+  <body class="bg-white dark:bg-black dark:text-white">
     <div class="grid">
-        <h1 class="text-3xl font-bold justify-self-center">👻 Ghost Mirror UI 👻</h1>
-        <span id="connected-message" class="text-md justify-self-end hidden">Connected to mirror <span class="h-2 w-2 mb-1 rounded-full bg-green-600 inline-block"></span></span>
-        <span id="disconnected-message" class="text-md justify-self-end hidden">Connection closed <span class="h-2 w-2 mb-1 rounded-full bg-red-600 inline-block"></span></span>
+      <h1
+        class="text-4xl md:text-5xl lg:text-6xl font-bold justify-self-center"
+      >
+        Ghost Mirror UI 👻
+      </h1>
+      <span id="connected-message" class="text-lg justify-self-end hidden mr-2">
+        <span
+          class="h-2 w-2 mb-1 my-2 rounded-full bg-green-600 inline-block"
+        ></span>
+        Connected to mirror
+      </span>
+      <span id="disconnected-message" class="text-lg justify-self-end hidden">
+        <span
+          class="h-2 w-2 mb-1 my-2 rounded-full bg-red-600 inline-block"
+        ></span>
+        Connection closed
+      </span>
     </div>
 
-    <h2 class="text-2xl font-bold">Now playing</h2>
+    <h2 class="text-3xl font-bold">Now playing</h2>
 
-    <img src="images/ghost.gif" width="200px" height="200px" id="now-playing"/>
+    <div class="w-60 h-60 sm:mx-auto">
+      <img src="/images/ghost.gif" class="w-full h-full" id="now-playing" />
+    </div>
 
     <div class="mx-2 mt-10">
-        <h3 class="text-xl">Click on image to display on mirror</h3>
+      <h3 class="text-3xl font-bold">Select new image</h3>
     </div>
 
-    <div class="mt-4 flex" id="image-grid"></div>
-</body>
+    <div class="mt-4 flex overflow-x-scroll" id="image-grid"></div>
+  </body>
 </html>

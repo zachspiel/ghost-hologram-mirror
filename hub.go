@@ -37,7 +37,7 @@ func newHub() *Hub {
 		register:     make(chan *Client),
 		unregister:   make(chan *Client),
 		clients:      make(map[*Client]bool),
-		currentImage: "ghost.gif",
+		currentImage: "/images/ghost.gif",
 	}
 }
 

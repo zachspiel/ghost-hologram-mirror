@@ -7,13 +7,21 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"path/filepath"
+    "embed"
+    "io/fs"
+	"os"
 )
 
-var addr = flag.String("addr", "localhost:8080", "http service address")
+//go:embed templates/*
+var embededTemplates embed.FS
+
+//go:embed images/*
+var images embed.FS
+
+var templates = template.Must(template.ParseFS(embededTemplates, "templates/*.html"))
 
 var upgrader = websocket.Upgrader{}
-var selectedImage = "images/ghost.gif"
+var selectedImage = "/images/ghost.gif"
 
 func echo(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
@@ -55,21 +63,13 @@ func updateDisplay(w http.ResponseWriter, r *http.Request) {
 }
 
 func home(w http.ResponseWriter, r *http.Request) {
-	lp := filepath.Join("templates", "index.html")
-
-	homeTemplate, parseError := template.ParseFiles(lp)
-
-	if parseError != nil {
-		fmt.Println(parseError)
-	}
-
 	data := struct {
 		WebSocketUrl string
 	}{
 		WebSocketUrl: "ws://" + r.Host + "/updateDisplay",
 	}
 
-	err := homeTemplate.ExecuteTemplate(w, "index.html", data)
+	err := templates.ExecuteTemplate(w, "index.html", data)
 
 	if err != nil {
 		fmt.Println(err)
@@ -77,13 +77,6 @@ func home(w http.ResponseWriter, r *http.Request) {
 }
 
 func display(w http.ResponseWriter, r *http.Request) {
-	lp := filepath.Join("templates", "display.html")
-	homeTemplate, parseError := template.ParseFiles(lp)
-
-	if parseError != nil {
-		fmt.Println(parseError)
-	}
-
 	data := struct {
 		WebSocketUrl  string
 		SelectedImage string
@@ -92,11 +85,27 @@ func display(w http.ResponseWriter, r *http.Request) {
 		SelectedImage: selectedImage,
 	}
 
-	err := homeTemplate.ExecuteTemplate(w, "display.html", data)
+	err := templates.ExecuteTemplate(w, "display.html", data)
 
 	if err != nil {
 		fmt.Println(err)
 	}
+}
+
+func getAllFilenames(efs embed.FS) (files []string, err error) {
+	if err := fs.WalkDir(efs, ".", func(path string, d fs.DirEntry, err error) error {
+		if d.IsDir() {
+			return nil
+		}
+ 
+		files = append(files, path)
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return files, nil
 }
 
 func main() {
@@ -104,13 +113,23 @@ func main() {
 	hub := newHub()
 	go hub.run()
 
+	port := os.Getenv("PORT")
+    if port == "" {
+        port = "8080"
+    }
+
+	files, _ := getAllFilenames(images)
+	
 	log.SetFlags(0)
 	http.HandleFunc("/updateDisplay", updateDisplay)
 	http.HandleFunc("/display", display)
-	http.Handle("/images/", http.StripPrefix("/images", http.FileServer(http.Dir("./templates/images"))))
+	http.Handle("/images/", http.FileServer(http.FS(images)))
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		serveWs(hub, w, r)
+    	log.Println("Recieved request for ws")
+		serveWs(hub, w, r, files)
 	})
 	http.HandleFunc("/", home)
-	log.Fatal(http.ListenAndServe(*addr, nil))
+
+    log.Println("listening on", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

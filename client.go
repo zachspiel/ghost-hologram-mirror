@@ -5,7 +5,6 @@ import (
 	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 )
@@ -112,17 +111,19 @@ func (c *Client) writePump() {
 	}
 }
 
-func getAvailableImages() []string {
-	files, err := os.ReadDir("./templates/images/")
-	if err != nil {
-		log.Fatal(err)
+func getAvailableImages(files []string) []string {
+	result := make([]string, 0)
+	validFileTypes := []string{".jpg", ".jpeg", ".png", ".gif"}
+
+	for _, file := range files {
+		for _, fileType := range validFileTypes {
+			if strings.HasSuffix(file, fileType) {
+				result = append(result, "/" + file)
+			}
+		}
 	}
 
-	result := make([]string, len(files))
-
-	for i, file := range files {
-		result[i] = file.Name()
-	}
+	log.Println(result)
 
 	return result
 }
@@ -135,7 +136,7 @@ func sendJsonMessage(client *Client, messageType string, payload string) {
 }
 
 // serveWs handles websocket requests from the peer.
-func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
+func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request, files []string) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
@@ -149,7 +150,7 @@ func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	go client.writePump()
 	go client.readPump()
 
-	images := getAvailableImages()
+	images := getAvailableImages(files)
 
 	sendJsonMessage(client, "setImage", client.hub.currentImage)
 	sendJsonMessage(client, "setAvailableImages", strings.Join(images[:], ","))
