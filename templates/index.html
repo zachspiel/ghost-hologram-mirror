@@ -38,6 +38,7 @@
           messages.forEach((message) => {
             try {
               const data = JSON.parse(message);
+
               if (
                 data.messageType === "setAvailableImages" &&
                 !createdImageGallery
@@ -57,6 +58,22 @@
                 createdImageGallery = true;
               } else if (data.messageType === "setImage") {
                 document.getElementById("now-playing").src = data.payload;
+              } else if (data.messageType === "setVisibilityStatus") {
+                if (data.payload) {
+                  document
+                    .getElementById("imageVisibleContainer")
+                    .classList.remove("hidden");
+                  document
+                    .getElementById("imageHiddenContainer")
+                    .classList.add("hidden");
+                } else {
+                  document
+                    .getElementById("imageVisibleContainer")
+                    .classList.add("hidden");
+                  document
+                    .getElementById("imageHiddenContainer")
+                    .classList.remove("hidden");
+                }
               }
             } catch (e) {
               console.log(e);
@@ -67,6 +84,39 @@
 
       function handleImageSelection(image) {
         conn.send(JSON.stringify({ messageType: "setImage", payload: image }));
+      }
+
+      function handleSubmit() {
+        const fadeInterval = getInputValueAsInt("fadeInterval");
+        const fadeTimeUnit = getInputValue("fadeTimeUnit");
+        const displayLength = getInputValueAsInt("displayLength");
+        const displayTimeUnit = getInputValue("displayTimeUnit");
+
+        const payload = JSON.stringify({
+          fadeInterval,
+          fadeTimeUnit,
+          displayLength,
+          displayTimeUnit,
+        });
+
+        conn.send(
+          JSON.stringify({
+            messageType: "setInterval",
+            payload,
+          })
+        );
+      }
+
+      function getInputValue(id) {
+        return document.getElementById(id).value;
+      }
+
+      function getInputValueAsInt(id) {
+        return parseInt(getInputValue(id));
+      }
+
+      function sendClearInterval() {
+        conn?.send(JSON.stringify({ messageType: "clearInterval" }));
       }
     </script>
   </head>
@@ -93,10 +143,120 @@
 
     <h2 class="text-3xl font-bold">Now playing</h2>
 
-    <div class="w-60 h-60 sm:mx-auto">
-      <img src="/images/ghost.gif" class="w-full h-full" id="now-playing" />
-    </div>
+    <div class="mx-auto md:mx-2">
+      <div id="imageVisibleContainer" class="flex">
+        <span
+          class="flex items-center bg-green-100 text-green-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded-full dark:bg-green-800 dark:text-green-200"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="1.5"
+            stroke="currentColor"
+            class="size-6 mr-2"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"
+            />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+            />
+          </svg>
+          Visible
+        </span>
+      </div>
+      <div id="imageHiddenContainer" class="flex hidden">
+        <span
+          class="flex items-center bg-yellow-100 text-yellow-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded-full dark:bg-yellow-800 dark:text-yellow-200"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="1.5"
+            stroke="currentColor"
+            class="size-6"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88"
+            />
+          </svg>
 
+          Hidden
+        </span>
+      </div>
+      <img src="/images/ghost.gif" class="w-80 h-80 mt-6" id="now-playing" />
+    </div>
+    <h3 class="text-xl font-bold mt-6">Set Fade Interval</h3>
+    <form class="max-w-sm mx-md" onsubmit="handleSubmit();return false">
+      <div class="flex">
+        <input
+          type="number"
+          id="fadeInterval"
+          aria-describedby="helper-text-explanation"
+          class="bg-gray-50 text-gray-900 text-sm rounded-l-md block w-full p-2.5 dark:bg-gray-700 dark:placeholder-gray-400 dark:text-white dark:focus:ring-2 dark:focus:ring-offset-4 dark:focus:ring-offset-slate-50"
+          placeholder="0"
+          required
+          min="0"
+          step="1"
+        />
+        <select
+          id="fadeTimeUnit"
+          class="bg-gray-50 text-gray-900 text-sm rounded-r-md border-l-2 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-2 dark:focus:ring-offset-4 dark:focus:ring-offset-slate-50"
+        >
+          <option selected>Choose a time unit</option>
+          <option value="MILISECONDS">Miliseconds</option>
+          <option value="SECONDS">Seconds</option>
+          <option value="MINUTES">Minutes</option>
+        </select>
+      </div>
+
+      <h3 class="text-xl font-bold mt-6">Display Duration</h3>
+
+      <div class="flex">
+        <input
+          type="number"
+          id="displayLength"
+          aria-describedby="helper-text-explanation"
+          class="bg-gray-50 text-gray-900 text-sm rounded-l-md block w-full p-2.5 dark:bg-gray-700 dark:placeholder-gray-400 dark:text-white dark:focus:ring-2 dark:focus:ring-offset-4 dark:focus:ring-offset-slate-50"
+          placeholder="0"
+          required
+          min="0"
+          step="1"
+        />
+        <select
+          id="displayTimeUnit"
+          class="bg-gray-50 text-gray-900 text-sm rounded-r-md border-l-2 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-2 dark:focus:ring-offset-4 dark:focus:ring-offset-slate-50"
+        >
+          <option selected>Choose a time unit</option>
+          <option value="MILISECONDS">Miliseconds</option>
+          <option value="SECONDS">Seconds</option>
+          <option value="MINUTES">Minutes</option>
+        </select>
+      </div>
+
+      <button
+        type="submit"
+        class="text-white bg-orange-700 hover:bg-orange-800 focus:ring-4 focus:ring-orange-300 font-medium rounded-lg text-sm px-2.5 py-2.5 m-2 dark:bg-orange-600 dark:hover:bg-orange-700 focus:outline-none dark:focus:ring-orange-800"
+      >
+        Save
+      </button>
+
+      <button
+        type="button"
+        class="text-white bg-gray-800 hover:bg-gray-900 focus:outline-none focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-gray-800 dark:hover:bg-gray-700 dark:focus:ring-gray-700 dark:border-gray-700"
+        onclick="sendClearInterval()"
+      >
+        Clear interval
+      </button>
+    </form>
     <div class="mx-2 mt-10">
       <h3 class="text-3xl font-bold">Select new image</h3>
     </div>

@@ -1,15 +1,19 @@
 package main
 
 import (
+	"bytes"
+	"embed"
+	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/gorilla/websocket"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
-    "embed"
-    "io/fs"
 	"os"
+	"strings"
+
+	"github.com/olahol/melody"
 )
 
 //go:embed templates/*
@@ -20,46 +24,11 @@ var images embed.FS
 
 var templates = template.Must(template.ParseFS(embededTemplates, "templates/*.html"))
 
-var upgrader = websocket.Upgrader{}
-var selectedImage = "/images/ghost.gif"
+var currentImage string
 
-func echo(w http.ResponseWriter, r *http.Request) {
-	c, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Print("upgrade:", err)
-		return
-	}
-	defer c.Close()
-	for {
-		mt, message, err := c.ReadMessage()
-		if err != nil {
-			log.Println("read:", err)
-			break
-		}
-		log.Printf("recv: %s", message)
-		err = c.WriteMessage(mt, message)
-		if err != nil {
-			log.Println("write:", err)
-			break
-		}
-	}
-}
-
-func updateDisplay(w http.ResponseWriter, r *http.Request) {
-	connection, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Print("upgrade:", err)
-		return
-	}
-	defer connection.Close()
-	for {
-		_, message, err := connection.ReadMessage()
-		if err != nil {
-			log.Println("read:", err)
-			break
-		}
-		log.Printf("Got message: %s", message)
-	}
+type ClientMessage struct {
+	MessageType string
+	Payload     string
 }
 
 func home(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +51,7 @@ func display(w http.ResponseWriter, r *http.Request) {
 		SelectedImage string
 	}{
 		WebSocketUrl:  "ws://" + r.Host + "/updateDisplay",
-		SelectedImage: selectedImage,
+		SelectedImage: currentImage,
 	}
 
 	err := templates.ExecuteTemplate(w, "display.html", data)
@@ -97,7 +66,7 @@ func getAllFilenames(efs embed.FS) (files []string, err error) {
 		if d.IsDir() {
 			return nil
 		}
- 
+
 		files = append(files, path)
 
 		return nil
@@ -108,28 +77,76 @@ func getAllFilenames(efs embed.FS) (files []string, err error) {
 	return files, nil
 }
 
+func getAvailableImages(files []string) []string {
+	result := make([]string, 0)
+	validFileTypes := []string{".jpg", ".jpeg", ".png", ".gif"}
+
+	for _, file := range files {
+		for _, fileType := range validFileTypes {
+			if strings.HasSuffix(file, fileType) {
+				result = append(result, "/"+file)
+			}
+		}
+	}
+
+	log.Println(result)
+
+	return result
+}
+
+func sendJsonMessage(s *melody.Session, messageType string, payload string) {
+	var (
+		newline = []byte{'\n'}
+		space   = []byte{' '}
+	)
+
+	jsonMessage := []byte(`{"messageType": "` + messageType + `", "payload": "` + payload + `"}`)
+	messageString := bytes.TrimSpace(bytes.Replace(jsonMessage, newline, space, -1))
+
+	s.Write(messageString)
+}
+
 func main() {
 	flag.Parse()
-	hub := newHub()
-	go hub.run()
+
+	m := melody.New()
 
 	port := os.Getenv("PORT")
-    if port == "" {
-        port = "8080"
-    }
+	if port == "" {
+		port = "8080"
+	}
 
 	files, _ := getAllFilenames(images)
-	
+	availableImages := getAvailableImages(files)
+
+	currentImage = availableImages[0]
+
 	log.SetFlags(0)
-	http.HandleFunc("/updateDisplay", updateDisplay)
 	http.HandleFunc("/display", display)
 	http.Handle("/images/", http.FileServer(http.FS(images)))
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-    	log.Println("Recieved request for ws")
-		serveWs(hub, w, r, files)
+		log.Println("Recieved request for ws")
+		m.HandleRequest(w, r)
 	})
 	http.HandleFunc("/", home)
 
-    log.Println("listening on", port)
+	m.HandleConnect(func(s *melody.Session) {
+		sendJsonMessage(s, "setAvailableImages", strings.Join(availableImages[:], ","))
+		sendJsonMessage(s, "setImage", currentImage)
+	})
+
+	m.HandleMessage(func(s *melody.Session, message []byte) {
+		var clientMessage ClientMessage
+
+		err := json.Unmarshal(message, &clientMessage)
+
+		if err == nil && clientMessage.MessageType == "setImage" {
+			currentImage = clientMessage.Payload
+		}
+
+		m.Broadcast(message)
+	})
+
+	log.Println("listening on", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

@@ -5,12 +5,85 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script src="https://cdn.tailwindcss.com"></script>
     <title>Ghost Hologram Mirror App</title>
+    <style type="text/css" rel="stylesheet">
+      #img-container {
+        opacity: 1;
+        transition: opacity 1s;
+      }
+
+      #img-container.fade {
+        opacity: 0;
+      }
+    </style>
     <script type="text/javascript">
+      let conn;
+      let displayTimeout;
+      let fadeTimeoutID;
+
       window.onload = function () {
-        const location = document.location;
-        const scheme = location.protocol === "https:" ? "wss" : "ws";
-        const serverUrl = `${scheme}://${location.hostname}:${location.port}/ws`;
-        const conn = new WebSocket(serverUrl);
+        function setDisplayInterval(
+          fadeInterval,
+          fadeTimeUnit,
+          displayLength,
+          displayTimeUnit
+        ) {
+          const displayTimeout = parseMilliseconds(
+            displayLength,
+            displayTimeUnit
+          );
+          const fadeTimeout = parseMilliseconds(fadeInterval, fadeTimeUnit);
+
+          if (fadeTimeoutID) {
+            clearInterval(fadeTimeoutID);
+            fadeTimeoutID = null;
+          }
+
+          fadeTimeoutID = setInterval(
+            toggleImageFade,
+            fadeTimeout,
+            displayTimeout
+          );
+        }
+
+        /**
+         * Display image for set time interval, then wait for fade interval
+         * to finish and then restart loop
+         */
+        function toggleImageFade(displayTimeout, fadeTimeout) {
+          document.getElementById("img-container").classList.remove("fade");
+          sendVisibilityStatus();
+
+          setTimeout(() => {
+            document.getElementById("img-container").classList.add("fade");
+            sendVisibilityStatus();
+          }, displayTimeout);
+        }
+
+        function resetTimeouts() {
+          clearInterval(fadeTimeoutID);
+          fadeTimeoutID = null;
+        }
+
+        function parseMilliseconds(length, timeUnit) {
+          let value = length;
+
+          if (timeUnit == "SECONDS") {
+            value = value * 1000;
+          } else if (timeUnit == "MINUTES") {
+            value = value * 60000;
+          }
+
+          return value;
+        }
+
+        const { protocol, hostname, port } = document.location;
+        const scheme = protocol === "https:" ? "wss" : "ws";
+        const serverUrl = `${scheme}://${hostname}:${port}/ws`;
+        conn = new WebSocket(serverUrl);
+
+        conn.onopen = function () {
+          sendVisibilityStatus();
+        };
 
         conn.onclose = function (evt) {
           var item = document.createElement("div");
@@ -20,6 +93,7 @@
             "<p class='text-red-600 font-bold'>Connection closed.</p>";
           document.getElementById("img-container").appendChild(item);
         };
+
         conn.onmessage = function (evt) {
           var messages = evt.data.split("\n");
           for (var i = 0; i < messages.length; i++) {
@@ -29,6 +103,28 @@
                 document.getElementById(
                   "img-container"
                 ).style.backgroundImage = `url("${data.payload}")`;
+              } else if (data.messageType === "setInterval") {
+                const {
+                  fadeInterval,
+                  fadeTimeUnit,
+                  displayLength,
+                  displayTimeUnit,
+                } = JSON.parse(data.payload);
+
+                displayImageIfHidden();
+
+                setDisplayInterval(
+                  fadeInterval,
+                  fadeTimeUnit,
+                  displayLength,
+                  displayTimeUnit
+                );
+              } else if (data.messageType === "clearInterval") {
+                resetTimeouts();
+
+                displayImageIfHidden();
+
+                sendVisibilityStatus();
               }
             } catch (e) {
               console.log(e);
@@ -36,6 +132,27 @@
           }
         };
       };
+
+      function displayImageIfHidden() {
+        if (
+          document.getElementById("img-container").classList.contains("fade")
+        ) {
+          document.getElementById("img-container").classList.remove("fade");
+        }
+      }
+
+      function sendVisibilityStatus() {
+        const isVisible = !document
+          .getElementById("img-container")
+          .classList.contains("fade");
+
+        conn?.send(
+          JSON.stringify({
+            messageType: "setVisibilityStatus",
+            payload: isVisible,
+          })
+        );
+      }
     </script>
   </head>
   <body class="dark:bg-black h-screen w-screen">
