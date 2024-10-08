@@ -94,7 +94,7 @@ func getAvailableImages(files []string) []string {
 	return result
 }
 
-func sendJsonMessage(s *melody.Session, messageType string, payload string) {
+func createJsonMessage(messageType string, payload string) []byte {
 	var (
 		newline = []byte{'\n'}
 		space   = []byte{' '}
@@ -103,6 +103,11 @@ func sendJsonMessage(s *melody.Session, messageType string, payload string) {
 	jsonMessage := []byte(`{"messageType": "` + messageType + `", "payload": "` + payload + `"}`)
 	messageString := bytes.TrimSpace(bytes.Replace(jsonMessage, newline, space, -1))
 
+	return messageString
+}
+
+func sendJsonMessage(s *melody.Session, messageType string, payload string) {
+	messageString := createJsonMessage(messageType, payload)
 	s.Write(messageString)
 }
 
@@ -141,10 +146,14 @@ func main() {
 		err := json.Unmarshal(message, &clientMessage)
 
 		if err == nil && clientMessage.MessageType == "setImage" {
-			currentImage = clientMessage.Payload
-		}
+			currentImage = clientMessage.Payload	
+		} 
 
 		m.Broadcast(message)
+	})
+
+	m.HandleDisconnect(func(s *melody.Session) {
+		m.BroadcastOthers(createJsonMessage("refreshConnection", "empty"), s)
 	})
 
 	log.Println("listening on", port)

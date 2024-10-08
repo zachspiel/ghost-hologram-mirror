@@ -8,152 +8,13 @@
     <style type="text/css" rel="stylesheet">
       #img-container {
         opacity: 1;
-        transition: opacity 1s;
+        transition: opacity 0.5s;
       }
 
       #img-container.fade {
         opacity: 0;
       }
     </style>
-    <script type="text/javascript">
-      let conn;
-      let displayTimeout;
-      let fadeTimeoutID;
-
-      window.onload = function () {
-        function setDisplayInterval(
-          fadeInterval,
-          fadeTimeUnit,
-          displayLength,
-          displayTimeUnit
-        ) {
-          const displayTimeout = parseMilliseconds(
-            displayLength,
-            displayTimeUnit
-          );
-          const fadeTimeout = parseMilliseconds(fadeInterval, fadeTimeUnit);
-
-          if (fadeTimeoutID) {
-            clearInterval(fadeTimeoutID);
-            fadeTimeoutID = null;
-          }
-
-          fadeTimeoutID = setInterval(
-            toggleImageFade,
-            fadeTimeout,
-            displayTimeout
-          );
-        }
-
-        /**
-         * Display image for set time interval, then wait for fade interval
-         * to finish and then restart loop
-         */
-        function toggleImageFade(displayTimeout, fadeTimeout) {
-          document.getElementById("img-container").classList.remove("fade");
-          sendVisibilityStatus();
-
-          setTimeout(() => {
-            document.getElementById("img-container").classList.add("fade");
-            sendVisibilityStatus();
-          }, displayTimeout);
-        }
-
-        function resetTimeouts() {
-          clearInterval(fadeTimeoutID);
-          fadeTimeoutID = null;
-        }
-
-        function parseMilliseconds(length, timeUnit) {
-          let value = length;
-
-          if (timeUnit == "SECONDS") {
-            value = value * 1000;
-          } else if (timeUnit == "MINUTES") {
-            value = value * 60000;
-          }
-
-          return value;
-        }
-
-        const { protocol, hostname, port } = document.location;
-        const scheme = protocol === "https:" ? "wss" : "ws";
-        const serverUrl = `${scheme}://${hostname}:${port}/ws`;
-        conn = new WebSocket(serverUrl);
-
-        conn.onopen = function () {
-          sendVisibilityStatus();
-        };
-
-        conn.onclose = function (evt) {
-          var item = document.createElement("div");
-          item.className =
-            "absolute right-4 bottom-4 bg-red-100 p-4 rounded-md";
-          item.innerHTML =
-            "<p class='text-red-600 font-bold'>Connection closed.</p>";
-          document.getElementById("img-container").appendChild(item);
-        };
-
-        conn.onmessage = function (evt) {
-          var messages = evt.data.split("\n");
-          for (var i = 0; i < messages.length; i++) {
-            try {
-              const data = JSON.parse(messages[i]);
-              if (data.messageType === "setImage") {
-                document.getElementById(
-                  "img-container"
-                ).style.backgroundImage = `url("${data.payload}")`;
-              } else if (data.messageType === "setInterval") {
-                const {
-                  fadeInterval,
-                  fadeTimeUnit,
-                  displayLength,
-                  displayTimeUnit,
-                } = JSON.parse(data.payload);
-
-                displayImageIfHidden();
-
-                setDisplayInterval(
-                  fadeInterval,
-                  fadeTimeUnit,
-                  displayLength,
-                  displayTimeUnit
-                );
-              } else if (data.messageType === "clearInterval") {
-                resetTimeouts();
-
-                displayImageIfHidden();
-
-                sendVisibilityStatus();
-              }
-            } catch (e) {
-              console.log(e);
-            }
-          }
-        };
-      };
-
-      function displayImageIfHidden() {
-        if (
-          document.getElementById("img-container").classList.contains("fade")
-        ) {
-          document.getElementById("img-container").classList.remove("fade");
-        }
-      }
-
-      function sendVisibilityStatus() {
-        const isVisible = !document
-          .getElementById("img-container")
-          .classList.contains("fade");
-
-        conn?.send(
-          JSON.stringify({
-            messageType: "setVisibilityStatus",
-            payload: isVisible,
-          })
-        );
-      }
-    </script>
   </head>
   <body class="dark:bg-black h-screen w-screen">
     <div
@@ -161,4 +22,125 @@
       class="dark:bg-black h-screen w-screen bg-contain bg-center bg-no-repeat"
     ></div>
   </body>
+  <script type="text/javascript">
+    let conn;
+    let displayTimeout;
+    let fadeTimeoutID;
+
+    function setupWebsocket() {
+      const { protocol, hostname, port } = document.location;
+      const scheme = protocol === "https:" ? "wss" : "ws";
+      const serverUrl = `${scheme}://${hostname}:${port}/ws`;
+      conn = new WebSocket(serverUrl);
+
+      conn.onopen = function () {
+        sendVisibilityStatus();
+        conn.send(JSON.stringify({ messageType: "mirrorConnected" }));
+      };
+
+      conn.onclose = (evt) => {
+        conn.send(JSON.stringify({ messageType: "mirrorDisconnected" }));
+      };
+
+      conn.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.messageType === "setImage") {
+            document.getElementById(
+              "img-container"
+            ).style.backgroundImage = `url("${data.payload}")`;
+          } else if (data.messageType === "setInterval") {
+            resetTimeouts();
+            displayImageIfHidden();
+
+            const { fadeInterval, fadeTimeUnit, displayLength, displayTimeUnit } =
+              JSON.parse(data.payload);
+
+            setDisplayInterval(
+              fadeInterval,
+              fadeTimeUnit,
+              displayLength,
+              displayTimeUnit
+            );
+          } else if (data.messageType === "clearInterval") {
+            resetTimeouts();
+            displayImageIfHidden();
+            sendVisibilityStatus();
+          } else if (data.messageType === "checkConnection") {
+            if (conn) {
+              conn.send(JSON.stringify({ messageType: "mirrorConnected" }));
+            }
+          }
+        } catch (e) {
+          console.log(e);
+        }
+      };
+    }
+
+    window.onload = () => {
+      setupWebsocket();
+    };
+
+    function setDisplayInterval(
+      fadeInterval,
+      fadeTimeUnit,
+      displayLength,
+      displayTimeUnit
+    ) {
+      const displayTimeout = parseMilliseconds(displayLength, displayTimeUnit);
+      const fadeTimeout = parseMilliseconds(fadeInterval, fadeTimeUnit);
+
+      fadeTimeoutID = window.setInterval(toggleImageFade, fadeTimeout, displayTimeout);
+    }
+
+    /**
+     * Display image for set time interval, then wait for fade interval
+     * to finish and then restart loop
+     */
+    function toggleImageFade(displayTimeout, fadeTimeout) {
+      document.getElementById("img-container").classList.remove("fade");
+      sendVisibilityStatus();
+
+      setTimeout(() => {
+        document.getElementById("img-container").classList.add("fade");
+        sendVisibilityStatus();
+      }, displayTimeout);
+    }
+
+    function resetTimeouts() {
+      window.clearInterval(fadeTimeoutID);
+      fadeTimeoutID = null;
+    }
+
+    function parseMilliseconds(length, timeUnit) {
+      let value = length;
+
+      if (timeUnit == "SECONDS") {
+        value = value * 1000;
+      } else if (timeUnit == "MINUTES") {
+        value = value * 60000;
+      }
+
+      return value;
+    }
+
+    function displayImageIfHidden() {
+      if (document.getElementById("img-container").classList.contains("fade")) {
+        document.getElementById("img-container").classList.remove("fade");
+      }
+    }
+
+    function sendVisibilityStatus() {
+      const isVisible = !document
+        .getElementById("img-container")
+        .classList.contains("fade");
+
+      if (conn) {
+        conn.send(
+          JSON.stringify({ messageType: "setVisibilityStatus", payload: isVisible })
+        );
+      }
+    }
+  </script>
 </html>

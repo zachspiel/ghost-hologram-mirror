@@ -9,6 +9,10 @@ This project uses a Raspberry PI 4 to display an image behind the mirror. For mo
 - GoLang for backend logic and web socket connections
 - Tailwind CSS for UI styling
 
+## Getting Started
+
+Clone this repository then run `go mod download` to install the required dependencies.
+
 ## Running the Project
 
 The project can be started by running the executable located within this project.
